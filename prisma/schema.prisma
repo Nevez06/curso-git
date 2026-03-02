@@ -1,0 +1,458 @@
+// This is your Prisma schema file
+// Convertido de Entity Framework (C#) para Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// === IDENTITY / USUÁRIOS ===
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  passwordHash   String
+  userName       String?
+  tipoUsuario    String? // "Organizador", "Fornecedor", "Convidado"
+  emailConfirmed Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("users")
+}
+
+// === PESSOA (base para todos os perfis) ===
+
+model Pessoa {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  endereco  String
+  telefone  String   @default("")
+  cpf       String
+  email     String
+  cidade    String   @default("")
+  uf        String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fornecedor          Fornecedor?
+  organizador         Organizador?
+  convidado           Convidado?
+  tarefasResponsaveis TarefaEvento[] @relation("ResponsavelTarefa")
+  notificacoes        Notificacao[]
+  mensagensEnviadas   MensagemChat[] @relation("Remetente")
+  mensagensRecebidas  MensagemChat[] @relation("Destinatario")
+
+  @@map("pessoas")
+}
+
+// === ORGANIZADOR ===
+
+model Organizador {
+  id           Int      @id @default(autoincrement())
+  pessoaId     Int      @unique
+  dataCadastro DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  pessoa            Pessoa            @relation(fields: [pessoaId], references: [id], onDelete: Restrict)
+  eventos           Evento[]
+  templatesConvites TemplateConvite[]
+
+  @@map("organizadores")
+}
+
+// === FORNECEDOR ===
+
+model Fornecedor {
+  id             Int      @id @default(autoincrement())
+  pessoaId       Int      @unique
+  cnpj           String
+  tipoServico    String
+  cidade         String
+  uf             String
+  avaliacaoMedia Decimal  @default(0.0)
+  dataCadastro   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  pessoa    Pessoa     @relation(fields: [pessoaId], references: [id], onDelete: Restrict)
+  produtos  Produto[]
+  feedbacks Feedback[]
+
+  @@map("fornecedores")
+}
+
+// === CONVIDADO ===
+
+model Convidado {
+  id               Int      @id @default(autoincrement())
+  pessoaId         Int      @unique
+  confirmaPresenca String   @default("Pendente")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  pessoa           Pessoa           @relation(fields: [pessoaId], references: [id], onDelete: Restrict)
+  listasConvidados ListaConvidado[]
+
+  @@map("convidados")
+}
+
+// === EVENTO ===
+
+model Evento {
+  id               Int      @id @default(autoincrement())
+  nomeEvento       String
+  dataEvento       DateTime
+  descricaoEvento  String
+  tipoEvento       String
+  custoEstimado    Decimal  @default(0.0)
+  statusEvento     String   @default("Planejado")
+  idTemplateEvento Int?
+  horaInicio       String
+  horaFim          String
+  publicoEstimado  Int      @default(0)
+  organizadorId    Int
+  localId          Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organizador         Organizador         @relation(fields: [organizadorId], references: [id])
+  templateEvento      TemplateEvento?     @relation(fields: [idTemplateEvento], references: [id])
+  local               Local?              @relation(fields: [localId], references: [id])
+  pedidos             Pedido[]
+  tarefasEventos      TarefaEvento[]
+  assistentesVirtuais AssistenteVirtual[]
+  listasConvidados    ListaConvidado[]
+  notificacoes        Notificacao[]
+  feedbacks           Feedback[]
+  administracoes      Administracao[]
+  despesas            Despesa[]
+  mensagensChat       MensagemChat[]
+  templatesConvites   TemplateConvite[]
+
+  @@index([organizadorId])
+  @@map("eventos")
+}
+
+// === TEMPLATE EVENTO ===
+
+model TemplateEvento {
+  id                   Int      @id @default(autoincrement())
+  tituloTemplateEvento String
+  dataCriacao          DateTime @default(now())
+  tipoEstilo           String
+  categoria            String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@map("templates_eventos")
+}
+
+// === LOCAL ===
+
+model Local {
+  id            Int      @id @default(autoincrement())
+  nomeLocal     String
+  enderecoLocal String
+  capacidade    Int
+  tipoLocal     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@map("locais")
+}
+
+// === PRODUTO ===
+
+model Produto {
+  id           String  @id
+  nome         String
+  descricao    String
+  preco        Decimal
+  tipo         String // Produto, Local
+  fornecedorId Int
+
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id], onDelete: Restrict)
+  pedidos    Pedido[]
+
+  @@map("produtos")
+}
+
+// === PEDIDO ===
+
+model Pedido {
+  id           String   @id
+  eventoId     Int
+  produtoId    String
+  quantidade   Int
+  precoTotal   Decimal
+  statusPedido String   @default("Pendente")
+  dataPedido   DateTime @default(now())
+
+  evento    Evento       @relation(fields: [eventoId], references: [id], onDelete: Restrict)
+  produto   Produto      @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  itens     ItemPedido[]
+  pagamento Pagamento?
+
+  @@index([eventoId])
+  @@map("pedidos")
+}
+
+// === ITEM PEDIDO ===
+
+model ItemPedido {
+  id                  Int      @id @default(autoincrement())
+  descricaoItemPedido String
+  quantidade          Int
+  precoUnitario       Decimal
+  categoriaItemPedido String
+  pedidoId            String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id])
+
+  @@map("itens_pedidos")
+}
+
+// === PAGAMENTO ===
+
+model Pagamento {
+  id              Int       @id @default(autoincrement())
+  valorTotal      Decimal
+  statusPagamento String    @default("Pendente")
+  metodoPagamento String
+  dataPagamento   DateTime?
+  comprovante     String
+  pedidoId        String    @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id])
+
+  @@map("pagamentos")
+}
+
+// === ADMINISTRACAO ===
+
+model Administracao {
+  id         Int     @id @default(autoincrement())
+  valorTotal Decimal @default(0)
+  orcamento  Decimal @default(0)
+  idEvento   Int
+
+  evento Evento @relation(fields: [idEvento], references: [id])
+
+  @@map("administracoes")
+}
+
+// === TAREFA EVENTO ===
+
+model TarefaEvento {
+  id                     Int       @id @default(autoincrement())
+  descricaoTarefaEvento  String?
+  responsavelId          Int?
+  statusConclusao        String    @default("Pendente")
+  dataLimite             DateTime?
+  prioridadeTarefaEvento String?
+  dataConclusao          DateTime?
+  eventoId               Int
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  responsavel Pessoa? @relation("ResponsavelTarefa", fields: [responsavelId], references: [id])
+  evento      Evento  @relation(fields: [eventoId], references: [id])
+
+  @@map("tarefas_eventos")
+}
+
+// === ASSISTENTE VIRTUAL ===
+
+model AssistenteVirtual {
+  id          Int      @id @default(autoincrement())
+  algoritmoIA String
+  sugestoes   String
+  dataGeracao DateTime @default(now())
+  eventoId    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  evento Evento @relation(fields: [eventoId], references: [id])
+
+  @@map("assistentes_virtuais")
+}
+
+// === LISTA CONVIDADO ===
+
+model ListaConvidado {
+  id               Int      @id @default(autoincrement())
+  convidadoId      Int
+  eventoId         Int
+  dataInclusao     DateTime @default(now())
+  confirmaPresenca String   @default("Pendente")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  convidado Convidado @relation(fields: [convidadoId], references: [id])
+  evento    Evento    @relation(fields: [eventoId], references: [id])
+
+  @@map("listas_convidados")
+}
+
+// === TEMPLATE CONVITE ===
+
+model TemplateConvite {
+  id                 Int      @id @default(autoincrement())
+  nomeTemplate       String
+  eventoId           Int
+  organizadorId      Int
+  tituloConvite      String   @default("Você está convidado!")
+  mensagemPrincipal  String   @default("Você está cordialmente convidado para participar do nosso evento especial.")
+  mensagemSecundaria String?
+  corFundo           String   @default("#ffffff")
+  corTexto           String   @default("#333333")
+  corPrimaria        String   @default("#007bff")
+  fonteTitulo        String?  @default("Arial, sans-serif")
+  fonteTexto         String?  @default("Arial, sans-serif")
+  tamanhoFonteTitulo Int      @default(32)
+  tamanhoFonteTexto  Int      @default(16)
+  mostrarLogo        Boolean  @default(true)
+  mostrarFotoEvento  Boolean  @default(true)
+  mostrarMapa        Boolean  @default(true)
+  mostrarQRCode      Boolean  @default(false)
+  imagemCabecalho    String?
+  imagemRodape       String?
+  estiloLayout       String   @default("Moderno")
+  cssPersonalizado   String?
+  ativo              Boolean  @default(true)
+  padraoSistema      Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  evento      Evento      @relation(fields: [eventoId], references: [id])
+  organizador Organizador @relation(fields: [organizadorId], references: [id])
+
+  @@map("templates_convites")
+}
+
+// === NOTIFICACAO ===
+
+model Notificacao {
+  id                    Int      @id @default(autoincrement())
+  mensagemNotificacao   String
+  tipo                  String
+  dataEnvio             DateTime @default(now())
+  lida                  Boolean  @default(false)
+  prioridadeNotificacao String
+  destinatarioId        Int
+  eventoId              Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  destinatario Pessoa  @relation(fields: [destinatarioId], references: [id])
+  evento       Evento? @relation(fields: [eventoId], references: [id])
+
+  @@map("notificacoes")
+}
+
+// === FEEDBACK ===
+
+model Feedback {
+  id                 Int      @id @default(autoincrement())
+  avaliacaoFeedback  String
+  comentarioFeedback String?
+  dataEnvioFeedback  DateTime @default(now())
+  tipoFeedback       String
+  fornecedorId       Int?
+  eventoId           Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  fornecedor Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  evento     Evento?     @relation(fields: [eventoId], references: [id])
+
+  @@map("feedbacks")
+}
+
+// === MENSAGEM CHAT ===
+
+model MensagemChat {
+  id                   Int      @id @default(autoincrement())
+  remetenteId          Int
+  destinatarioId       Int
+  tipoDestinatario     String
+  conteudo             String
+  eventoId             Int
+  dataEnvio            DateTime @default(now())
+  ehRespostaAssistente Boolean  @default(false)
+
+  remetente    Pessoa @relation("Remetente", fields: [remetenteId], references: [id], onDelete: Restrict)
+  destinatario Pessoa @relation("Destinatario", fields: [destinatarioId], references: [id], onDelete: Restrict)
+  evento       Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@map("mensagens_chat")
+}
+
+// === DESPESA ===
+
+model Despesa {
+  id          Int      @id @default(autoincrement())
+  eventoId    Int
+  descricao   String
+  valor       Decimal
+  dataDespesa DateTime @default(now())
+
+  evento Evento @relation(fields: [eventoId], references: [id])
+
+  @@map("despesas")
+}
+
+// === LOGS ACESSO (Seguranca) ===
+
+model LogsAcesso {
+  id              Int       @id @default(autoincrement())
+  enderecoIP      String
+  dataAcesso      DateTime  @default(now())
+  usuario         String
+  urlAcesso       String
+  userAgent       String    @default("")
+  tipoAcesso      String?
+  acessoBloqueado Boolean?  @default(false)
+  motivoBloqueio  String?
+  createdAt       DateTime? @default(now())
+  updatedAt       DateTime? @default(now())
+
+  @@map("logs_acessos")
+}
+
+// === AUDITORIA ===
+
+model Auditoria {
+  id                 Int       @id @default(autoincrement())
+  tipoEntidade       String
+  entidadeId         Int
+  tipoAcao           String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, VIEW
+  usuario            String
+  dataAcao           DateTime  @default(now())
+  enderecoIP         String?
+  descricao          String?
+  dadosAntigos       String?
+  dadosNovos         String?
+  navegador          String?
+  sistemaOperacional String?
+  sucesso            Boolean?  @default(true)
+  mensagemErro       String?
+  createdAt          DateTime? @default(now())
+  updatedAt          DateTime? @default(now())
+
+  @@map("auditorias")
+}
